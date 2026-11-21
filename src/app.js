@@ -82,3 +82,21 @@ export function creerApplication() {
 
   return app;
 }
+
+// -----------------------------------------------------------------------------
+// Export par défaut — requis par la détection automatique d'Express sur Vercel.
+//
+// Vercel identifie l'application Express en cherchant un fichier nommé
+// `app`, `index` ou `server` (à la racine du projet ou dans `src/`). Ce fichier
+// `src/app.js` correspond à ce motif : il devient donc le point d'entrée de la
+// fonction serverless et DOIT exposer l'application en export PAR DÉFAUT.
+//
+// Sans cet export, le déploiement échoue avec :
+//   « Invalid export found in module "src/app.js".
+//     The default export must be a function or server. »
+//
+// L'instance produite ici est réservée à Vercel. En local (`npm start`, PM2,
+// scripts de test), on continue d'appeler `creerApplication()` pour disposer
+// d'une instance indépendante par processus / par test d'intégration.
+// -----------------------------------------------------------------------------
+export default creerApplication();
