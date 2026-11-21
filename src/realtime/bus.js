@@ -13,7 +13,7 @@
 //     l'API : le temps réel est simplement indisponible et se rétablit seul.
 
 import pg from 'pg';
-import { config } from '../config/env.js';
+import { config, estHotePooler } from '../config/env.js';
 import { logger } from '../utils/logger.js';
 import { normaliserEvenement } from './evenements.js';
 
@@ -33,7 +33,10 @@ let minuterie = null;
 
 function optionsConnexion() {
   return {
-    host: config.baseDeDonnees.host,
+    // L'écoute LISTEN/NOTIFY passe TOUJOURS par un hôte direct : un pooler de
+    // connexions (Neon « -pooler », PgBouncer) accepte `LISTEN` mais ne relaie
+    // jamais la moindre notification.
+    host: config.baseDeDonnees.hostTempsReel,
     port: config.baseDeDonnees.port,
     database: config.baseDeDonnees.database,
     user: config.baseDeDonnees.user,
@@ -78,6 +81,8 @@ export function publier(evenement) {
 export const etatBus = () => ({
   actif: ecouteActive,
   canal: config.tempsReel.canal,
+  hote: config.baseDeDonnees.hostTempsReel,
+  hostViaPooler: estHotePooler(config.baseDeDonnees.hostTempsReel),
   abonnes: abonnes.size,
   tentatives,
   derniereErreur,
@@ -185,6 +190,22 @@ export async function demarrerBus() {
   }
 
   arretDemande = false;
+
+  const hote = config.baseDeDonnees.hostTempsReel;
+
+  // Piège classique en production : l'API est connectée à un pooler pour ses
+  // requêtes (recommandé) mais l'écoute LISTEN/NOTIFY doit passer par une
+  // connexion DIRECTE, sinon le temps réel reste muet sans la moindre erreur.
+  if (estHotePooler(hote)) {
+    logger.error(
+      `Temps réel : l'hôte « ${hote} » est un POOLER de connexions. ` +
+        'LISTEN/NOTIFY n\'y est jamais relayé : le temps réel ne recevra aucun événement. ' +
+        'Renseignez DB_HOST_TEMPS_REEL (ou PGHOST_UNPOOLED) avec la connexion directe.'
+    );
+  } else {
+    logger.info(`Temps réel : connexion d'écoute dédiée sur l'hôte direct « ${hote} ».`);
+  }
+
   try {
     return await connecter();
   } catch (erreur) {
