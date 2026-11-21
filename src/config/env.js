@@ -21,6 +21,14 @@ const schemaEnvironnement = z.object({
   DB_POOL_MAX: z.coerce.number().int().positive().default(20),
   DB_SSL: z.enum(['true', 'false']).default('false').transform((valeur) => valeur === 'true'),
 
+  // Hôte dédié à l'écoute du canal temps réel (LISTEN/NOTIFY). Indispensable
+  // dès que l'API passe par un pooler de connexions (Neon « -pooler »,
+  // PgBouncer en mode transaction) : un pooler n'y relate JAMAIS les
+  // notifications. Par défaut, on retombe sur DB_HOST, puis sur PGHOST_UNPOOLED
+  // (variable fournie par Neon pour la connexion directe).
+  DB_HOST_TEMPS_REEL: z.string().optional(),
+  PGHOST_UNPOOLED: z.string().optional(),
+
   JWT_ACCESS_SECRET: z.string().min(32, 'JWT_ACCESS_SECRET doit contenir au moins 32 caractères'),
   JWT_REFRESH_SECRET: z.string().min(32, 'JWT_REFRESH_SECRET doit contenir au moins 32 caractères'),
   JWT_ACCESS_EXPIRES: z.string().default('15m'),
@@ -67,6 +75,14 @@ if (!resultat.success) {
 
 const brut = resultat.data;
 
+/**
+ * Détecte un hôte de pooler de connexions (Neon « -pooler », PgBouncer...).
+ * Un tel hôte est parfaitement valide pour les requêtes, mais rend
+ * `LISTEN/NOTIFY` inopérant : le temps réel ne recevrait donc jamais rien.
+ * @param {string} hote
+ */
+export const estHotePooler = (hote) => /-pooler\./i.test(String(hote ?? ''));
+
 // Objet de configuration exposé au reste de l'application (immuable)
 export const config = Object.freeze({
   environnement: brut.NODE_ENV,
@@ -75,6 +91,8 @@ export const config = Object.freeze({
   nomApplication: brut.APP_NAME,
   baseDeDonnees: {
     host: brut.DB_HOST,
+    // Connexion dédiée au LISTEN/NOTIFY : jamais via un pooler (voir plus haut).
+    hostTempsReel: brut.DB_HOST_TEMPS_REEL ?? brut.PGHOST_UNPOOLED ?? brut.DB_HOST,
     port: brut.DB_PORT,
     database: brut.DB_NAME,
     user: brut.DB_USER,
